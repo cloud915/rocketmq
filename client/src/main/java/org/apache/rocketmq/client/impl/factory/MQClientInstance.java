@@ -228,17 +228,22 @@ public class MQClientInstance {
                     this.serviceState = ServiceState.START_FAILED;
                     // If not specified,looking address from name server
                     if (null == this.clientConfig.getNamesrvAddr()) {
-                        this.mQClientAPIImpl.fetchNameServerAddr();
+                        this.mQClientAPIImpl.fetchNameServerAddr(); // 从 http server中获取ns地址
                     }
                     // Start request-response channel
+                    // 启动MQClientAPIImpl，内部是一个Netty Client的初始化过程，mQClientAPIImpl就是远程通信客户端
                     this.mQClientAPIImpl.start();
                     // Start various schedule tasks
+                    // 开启Client的定时任务:updateTopicRouteInfoFromNameServer()，定时从ns中同步topic的路由表
                     this.startScheduledTask();
                     // Start pull service
+                    // 开启pull模式，拉去消息，start()对应thread.start()，可以追踪run()看一下做了什么
+                    // org.apache.rocketmq.client.impl.consumer.PullMessageService.run
                     this.pullMessageService.start();
-                    // Start rebalance service
+                    // Start rebalance service 启动rebalance服务
+                    // GO: org.apache.rocketmq.client.impl.consumer.RebalanceService.run
                     this.rebalanceService.start();
-                    // Start push service
+                    // Start push service，启动producer服务，这里保证producer的心跳服务已启动
                     this.defaultMQProducer.getDefaultMQProducerImpl().start(false);
                     log.info("the client factory [{}] start OK", this.clientId);
                     this.serviceState = ServiceState.RUNNING;

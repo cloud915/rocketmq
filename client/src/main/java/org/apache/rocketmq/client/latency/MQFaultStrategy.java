@@ -56,39 +56,41 @@ public class MQFaultStrategy {
     }
 
     public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName) {
-        if (this.sendLatencyFaultEnable) {
+        if (this.sendLatencyFaultEnable) { // 是否开启了延时容错：尽量使用上一次用过的mq
             try {
                 int index = tpInfo.getSendWhichQueue().getAndIncrement();
                 for (int i = 0; i < tpInfo.getMessageQueueList().size(); i++) {
+                    // 随机值index mode mq数量，轮询得到一个索引
                     int pos = Math.abs(index++) % tpInfo.getMessageQueueList().size();
                     if (pos < 0)
                         pos = 0;
+                    // 从mqList中取出一个mq对象
                     MessageQueue mq = tpInfo.getMessageQueueList().get(pos);
-                    if (latencyFaultTolerance.isAvailable(mq.getBrokerName())) {
-                        if (null == lastBrokerName || mq.getBrokerName().equals(lastBrokerName))
+                    if (latencyFaultTolerance.isAvailable(mq.getBrokerName())) { // 检查mq可用性
+                        if (null == lastBrokerName || mq.getBrokerName().equals(lastBrokerName)) // 默认是要使用上一次使用过的mq
                             return mq;
                     }
                 }
-
+                // 如果没有达到sendLatencyFaultEnable的要求,则需要重新选择，并且尽量从使用过的mq中选择
                 final String notBestBroker = latencyFaultTolerance.pickOneAtLeast();
                 int writeQueueNums = tpInfo.getQueueIdByBroker(notBestBroker);
                 if (writeQueueNums > 0) {
-                    final MessageQueue mq = tpInfo.selectOneMessageQueue();
+                    final MessageQueue mq = tpInfo.selectOneMessageQueue(); // 从可用broker中随机获取一个mq
                     if (notBestBroker != null) {
-                        mq.setBrokerName(notBestBroker);
-                        mq.setQueueId(tpInfo.getSendWhichQueue().getAndIncrement() % writeQueueNums);
+                        mq.setBrokerName(notBestBroker); // 设置brokerName
+                        mq.setQueueId(tpInfo.getSendWhichQueue().getAndIncrement() % writeQueueNums); // 再随机选择一个queue
                     }
                     return mq;
-                } else {
+                } else {// 对于不可用/没有可写queue的mq，要移除
                     latencyFaultTolerance.remove(notBestBroker);
                 }
             } catch (Exception e) {
                 log.error("Error occurred when selecting message queue", e);
             }
 
-            return tpInfo.selectOneMessageQueue();
+            return tpInfo.selectOneMessageQueue(); // 如果以上逻辑获取失败，则再次减少限制，随机获取一个mq
         }
-
+        // 不采用sendLatencyFaultEnable模式，则随机选一个不是lastBrokerName的mq
         return tpInfo.selectOneMessageQueue(lastBrokerName);
     }
 

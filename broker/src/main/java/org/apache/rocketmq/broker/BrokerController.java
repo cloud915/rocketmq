@@ -220,6 +220,7 @@ public class BrokerController {
     }
 
     public boolean initialize() throws CloneNotSupportedException {
+        // 从本地文件加载所有持久化信息
         boolean result = this.topicConfigManager.load();
 
         result = result && this.consumerOffsetManager.load();

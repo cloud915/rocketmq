@@ -61,7 +61,7 @@ public class BrokerStartup {
     public static BrokerController start(BrokerController controller) {
         try {
 
-            controller.start();
+            controller.start();// 3、启动borker
 
             String tip = "The broker[" + controller.getBrokerConfig().getBrokerName() + ", "
                 + controller.getBrokerAddr() + "] boot success. serializeType=" + RemotingCommand.getSerializeTypeConfigInThisServer();
@@ -120,7 +120,7 @@ public class BrokerStartup {
                 int ratio = messageStoreConfig.getAccessMessageInMemoryMaxRatio() - 10;
                 messageStoreConfig.setAccessMessageInMemoryMaxRatio(ratio);
             }
-
+            // 命令行指定 -c 则读取 配置文件，并加载到对应coinfig对象中
             if (commandLine.hasOption('c')) {
                 String file = commandLine.getOptionValue('c');
                 if (file != null) {
@@ -140,13 +140,13 @@ public class BrokerStartup {
                 }
             }
 
-            MixAll.properties2Object(ServerUtil.commandLine2Properties(commandLine), brokerConfig);
+            MixAll.properties2Object(ServerUtil.commandLine2Properties(commandLine), brokerConfig); // 从命令行 直接读取 读取配置参数
 
             if (null == brokerConfig.getRocketmqHome()) {
                 System.out.printf("Please set the %s variable in your environment to match the location of the RocketMQ installation", MixAll.ROCKETMQ_HOME_ENV);
                 System.exit(-2);
             }
-
+            // 解析ns地址是否正确
             String namesrvAddr = brokerConfig.getNamesrvAddr();
             if (null != namesrvAddr) {
                 try {
@@ -161,7 +161,7 @@ public class BrokerStartup {
                     System.exit(-3);
                 }
             }
-
+            //检查broker角色及模式
             switch (messageStoreConfig.getBrokerRole()) {
                 case ASYNC_MASTER:
                 case SYNC_MASTER:
@@ -200,7 +200,7 @@ public class BrokerStartup {
                 MixAll.printObjectProperties(console, messageStoreConfig, true);
                 System.exit(0);
             }
-
+            // 解析日志配置
             log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
             MixAll.printObjectProperties(log, brokerConfig);
             MixAll.printObjectProperties(log, nettyServerConfig);
@@ -211,16 +211,16 @@ public class BrokerStartup {
                 brokerConfig,
                 nettyServerConfig,
                 nettyClientConfig,
-                messageStoreConfig);
+                messageStoreConfig); // 1、实例化broker：大量的实例化
             // remember all configs to prevent discard
-            controller.getConfiguration().registerConfig(properties);
+            controller.getConfiguration().registerConfig(properties); // 将所有配置信息进行合并
 
-            boolean initResult = controller.initialize();
+            boolean initResult = controller.initialize();// 2、初始化broker
             if (!initResult) {
                 controller.shutdown();
                 System.exit(-3);
             }
-
+            // 注册shutdown钩子函数，优雅关机
             Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
                 private volatile boolean hasShutdown = false;
                 private AtomicInteger shutdownTimes = new AtomicInteger(0);

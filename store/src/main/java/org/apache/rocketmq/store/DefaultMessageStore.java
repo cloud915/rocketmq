@@ -163,6 +163,8 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     /**
+     * 这个方法是让DefaultMessageStore加载必要的文件信息到内存映射，
+     * 同时会实例化this.storeCheckpoint，用于记录store的进度
      * @throws IOException
      */
     public boolean load() {
@@ -185,6 +187,8 @@ public class DefaultMessageStore implements MessageStore {
             if (result) {
                 this.storeCheckpoint =
                     new StoreCheckpoint(StorePathConfigHelper.getStoreCheckpoint(this.messageStoreConfig.getStorePathRootDir()));
+                // 此处实例化storeCheckpoint时，会实例化this.randomAccessFile对象，指定filepath，就是构造函数入参
+                // filepath=xxx/user.home/store，在messageStore的start()过程中，会通过this.randomAccessFile获取fileLock，来操作store文件
 
                 this.indexService.load(lastExitOK);
 
@@ -208,33 +212,42 @@ public class DefaultMessageStore implements MessageStore {
      * @throws Exception
      */
     public void start() throws Exception {
-
-        lock = lockFile.getChannel().tryLock(0, 1, false);
+        //1、写lock 文件,尝试获取lock文件锁，此处是java的IO/NIO api
+        // 后面会看到start是为了操作文件读写，保证磁盘上的文件只会被一个messageStore读写
+        lock = lockFile.getChannel().tryLock(0, 1, false);  // lockFile是在load()方法中实例化的，它指定了一个磁盘文件
         if (lock == null || lock.isShared() || !lock.isValid()) {
             throw new RuntimeException("Lock failed,MQ already started");
         }
+        // 在running过程中会一直持有lock，直到shutdown时才会释放
 
+        // 向文件写入内容
         lockFile.getChannel().write(ByteBuffer.wrap("lock".getBytes()));
         lockFile.getChannel().force(true);
 
+        // 启动服务，定时将consumeQueue对象中记录的数据刷入磁盘
         this.flushConsumeQueueService.start();
+        // 启动服务，定时将commitLog对象中记录的数据刷入磁盘
         this.commitLog.start();
+        // 启动服务，store指标统计服务，如：响应时间RT,TPS
         this.storeStatsService.start();
 
-        if (this.scheduleMessageService != null && SLAVE != messageStoreConfig.getBrokerRole()) {
-            this.scheduleMessageService.start();
+        if (this.scheduleMessageService != null && SLAVE != messageStoreConfig.getBrokerRole()) {// 只有master节点才会启动
+            this.scheduleMessageService.start();// 处理延时消息的调度服务，rocketmq支持几个level的延迟消息，分别有对应的定时任务来处理
         }
 
+        // 启动前，设置偏移量，如果允许重复消费，则获取commit log中已经确认的offset；否则使用最大offset（默认）
         if (this.getMessageStoreConfig().isDuplicationEnable()) {
             this.reputMessageService.setReputFromOffset(this.commitLog.getConfirmOffset());
         } else {
             this.reputMessageService.setReputFromOffset(this.commitLog.getMaxOffset());
         }
+        // 该服务负责将CommitLog中的消息offset记录到cosumeQueue中.
         this.reputMessageService.start();
-
+        // 负责主从同步的服务
         this.haService.start();
-
+        // 如果是首次启动的borker，通过它会创建filepath=xxx/user.home/store 文件
         this.createTempFile();
+        // 启动一些定时任务
         this.addScheduleTask();
         this.shutdown = false;
     }
@@ -1169,30 +1182,31 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     private void addScheduleTask() {
-
+        // 1、定时清理过期的三个文件，默认72小时
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
                 DefaultMessageStore.this.cleanFilesPeriodically();
             }
         }, 1000 * 60, this.messageStoreConfig.getCleanResourceInterval(), TimeUnit.MILLISECONDS);
-
+        // 2、定时检测commitlog和consumeQueue文件是否完整
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
                 DefaultMessageStore.this.checkSelf();
             }
         }, 1, 10, TimeUnit.MINUTES);
-
+        // 3、定时检查commitLog的lock时长，commitlog在写操作时会lock文件
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
                 if (DefaultMessageStore.this.getMessageStoreConfig().isDebugLockEnable()) {
                     try {
                         if (DefaultMessageStore.this.commitLog.getBeginTimeInLock() != 0) {
+                            // 锁的持有时间
                             long lockTime = System.currentTimeMillis() - DefaultMessageStore.this.commitLog.getBeginTimeInLock();
                             if (lockTime > 1000 && lockTime < 10000000) {
-
+                                // 打印堆栈信息
                                 String stack = UtilAll.jstack();
                                 final String fileName = System.getProperty("user.home") + File.separator + "debug/lock/stack-"
                                     + DefaultMessageStore.this.commitLog.getBeginTimeInLock() + "-" + lockTime;

@@ -50,10 +50,16 @@ We always welcome new contributions, whether for trivial cleanups, big new featu
 
 
 ## Read It，TODO list
-1、Producer和Consumer启动流程
+###### https://www.jianshu.com/nb/32637886
 
-2、broker初始化、启动流程
+1、Producer和Consumer启动流程 v
 
-3、Producer的消息发送，与broker的消息接收及持久化
+2、broker初始化、启动流程 v
 
-4、Consumer的消息消费，与borker的消息读取
+3、topic创建过程
+
+4、Producer的消息发送，与broker的消息接收
+
+5、broker的消息存储及持久化
+
+6、Consumer的消息消费，与borker的消息读取

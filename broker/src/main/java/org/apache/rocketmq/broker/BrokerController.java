@@ -853,7 +853,7 @@ public class BrokerController {
         }
         // 以上服务的启动，有些是一直监听、有些是定时执行、有些是await/signal逻辑来执行
     }
-
+    // 同步方法，将broker的增量数据，进行注册
     public synchronized void registerIncrementBrokerData(TopicConfig topicConfig, DataVersion dataVersion) {
         TopicConfig registerTopicConfig = topicConfig;
         if (!PermName.isWriteable(this.getBrokerConfig().getBrokerPermission())
@@ -865,10 +865,11 @@ public class BrokerController {
 
         ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<String, TopicConfig>();
         topicConfigTable.put(topicConfig.getTopicName(), registerTopicConfig);
+        // 将topicConfig信息，重新组装为TopicConfigSerializeWrapper对象
         TopicConfigSerializeWrapper topicConfigSerializeWrapper = new TopicConfigSerializeWrapper();
         topicConfigSerializeWrapper.setDataVersion(dataVersion);
         topicConfigSerializeWrapper.setTopicConfigTable(topicConfigTable);
-
+        // 将增量信息，更新到nameserver中
         doRegisterBrokerAll(true, false, topicConfigSerializeWrapper);
     }
 

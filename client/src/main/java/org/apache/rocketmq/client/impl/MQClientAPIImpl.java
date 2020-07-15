@@ -255,6 +255,7 @@ public class MQClientAPIImpl {
     public void createTopic(final String addr, final String defaultTopic, final TopicConfig topicConfig,
         final long timeoutMillis)
         throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+        // 1.组装创建topic的request
         CreateTopicRequestHeader requestHeader = new CreateTopicRequestHeader();
         requestHeader.setTopic(topicConfig.getTopicName());
         requestHeader.setDefaultTopic(defaultTopic);
@@ -264,11 +265,12 @@ public class MQClientAPIImpl {
         requestHeader.setTopicFilterType(topicConfig.getTopicFilterType().name());
         requestHeader.setTopicSysFlag(topicConfig.getTopicSysFlag());
         requestHeader.setOrder(topicConfig.isOrder());
-
+        // 2.创建远程调用的request
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.UPDATE_AND_CREATE_TOPIC, requestHeader);
-
+        // 3.根据addr，请求broker，创建topic；admin操作，可以使用vipChannel
         RemotingCommand response = this.remotingClient.invokeSync(MixAll.brokerVIPChannel(this.clientConfig.isVipChannelEnabled(), addr),
             request, timeoutMillis);
+        // 在Broker上，是通过AdminBrokerProcessor-->processRequest()处理所有的管理请求的，并且由updateAndCreateTopic()来具体实现创建。
         assert response != null;
         switch (response.getCode()) {
             case ResponseCode.SUCCESS: {

@@ -56,7 +56,7 @@ We always welcome new contributions, whether for trivial cleanups, big new featu
 
 2、broker初始化、启动流程 v
 
-3、topic创建过程
+3、topic创建过程 v
 
 4、Producer的消息发送，与broker的消息接收
 

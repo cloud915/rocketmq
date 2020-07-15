@@ -78,6 +78,7 @@ public class MQAdminImpl {
 
     public void createTopic(String key, String newTopic, int queueNum, int topicSysFlag) throws MQClientException {
         try {
+            // 1.通过key，这里会使用defaultTopic-name，去nameserver中，获取所有topic路由信息，从中可以拿到该topic所在的broker信息、queue信息等
             TopicRouteData topicRouteData = this.mQClientFactory.getMQClientAPIImpl().getTopicRouteInfoFromNameServer(key, timeoutMillis);
             List<BrokerData> brokerDataList = topicRouteData.getBrokerDatas();
             if (brokerDataList != null && !brokerDataList.isEmpty()) {
@@ -87,20 +88,23 @@ public class MQAdminImpl {
                 MQClientException exception = null;
 
                 StringBuilder orderTopicString = new StringBuilder();
-
+                // 2.遍历borker列表，从中找到masert上的borker对象，进行topic的创建
                 for (BrokerData brokerData : brokerDataList) {
                     String addr = brokerData.getBrokerAddrs().get(MixAll.MASTER_ID);
                     if (addr != null) {
                         TopicConfig topicConfig = new TopicConfig(newTopic);
-                        topicConfig.setReadQueueNums(queueNum);
-                        topicConfig.setWriteQueueNums(queueNum);
-                        topicConfig.setTopicSysFlag(topicSysFlag);
+                        topicConfig.setReadQueueNums(queueNum);// 设置可读queue数量
+                        topicConfig.setWriteQueueNums(queueNum);// 设置可写queue数量
+                        topicConfig.setTopicSysFlag(topicSysFlag);// 设置topic的属性，具体查一下api
 
+                        // 3.每个创建工作，将执行1次，重试4次，一旦5次都执行失败，则会记录异常
                         boolean createOK = false;
                         for (int i = 0; i < 5; i++) {
                             try {
+                                // 真正创建动作：远程调用broker接口，去创建
                                 this.mQClientFactory.getMQClientAPIImpl().createTopic(addr, key, topicConfig, timeoutMillis);
                                 createOK = true;
+                                //3.1、只要有一个borker创建成功，则标记为创建topic成功，后面就阻止抛出异常！
                                 createOKAtLeastOnce = true;
                                 break;
                             } catch (Exception e) {
@@ -109,7 +113,7 @@ public class MQAdminImpl {
                                 }
                             }
                         }
-
+                        // 4.创建成功，记录当前broker信息
                         if (createOK) {
                             orderTopicString.append(brokerData.getBrokerName());
                             orderTopicString.append(":");
@@ -118,7 +122,7 @@ public class MQAdminImpl {
                         }
                     }
                 }
-
+                // 一次都未创建成功，并且有异常信息，则抛出exception
                 if (exception != null && !createOKAtLeastOnce) {
                     throw exception;
                 }

@@ -212,7 +212,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
     public boolean rejectRequest() {
         return false;
     }
-
+    //0. 同步方法
     private synchronized RemotingCommand updateAndCreateTopic(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -220,6 +220,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             (CreateTopicRequestHeader) request.decodeCommandCustomHeader(CreateTopicRequestHeader.class);
         log.info("updateAndCreateTopic called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
 
+        // 1.判断topic名称，是否与保留字冲突，不能与clusterName相等
         if (requestHeader.getTopic().equals(this.brokerController.getBrokerConfig().getBrokerClusterName())) {
             String errorMsg = "the topic[" + requestHeader.getTopic() + "] is conflict with system reserved words.";
             log.warn(errorMsg);
@@ -227,7 +228,7 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
             response.setRemark(errorMsg);
             return response;
         }
-
+        // 2.这里直接先回写Response了。
         try {
             response.setCode(ResponseCode.SUCCESS);
             response.setOpaque(request.getOpaque());
@@ -237,18 +238,18 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         } catch (Exception e) {
             log.error("Failed to produce a proper response", e);
         }
-
+        // 3.再执行创建工作，组装topicConfig
         TopicConfig topicConfig = new TopicConfig(requestHeader.getTopic());
         topicConfig.setReadQueueNums(requestHeader.getReadQueueNums());
         topicConfig.setWriteQueueNums(requestHeader.getWriteQueueNums());
         topicConfig.setTopicFilterType(requestHeader.getTopicFilterTypeEnum());
         topicConfig.setPerm(requestHeader.getPerm());
         topicConfig.setTopicSysFlag(requestHeader.getTopicSysFlag() == null ? 0 : requestHeader.getTopicSysFlag());
-
+        // 4.更新topicConfig：更新内存对象、持久化到文件中。
         this.brokerController.getTopicConfigManager().updateTopicConfig(topicConfig);
-
+        // 5.将broker增量topic信息，更新到nameserver中：里面注册时，采用oneway方式
         this.brokerController.registerIncrementBrokerData(topicConfig,this.brokerController.getTopicConfigManager().getDataVersion());
-
+        // oneway的注册方式，也就从一定角度上说明nameserver是的AP机制
         return null;
     }
 
